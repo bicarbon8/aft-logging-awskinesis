@@ -1,0 +1,9 @@
+{
+    "testloglevel": "info",
+    "aws_access_key_id": null,
+    "aws_secret_access_key": null,
+    "kinesisfirehose_regionendpoint": null,
+    "kinesisfirehose_deliverystream": null,
+    "aws_session_token": null,
+    "aws_credential_retrieval": "config"
+}
