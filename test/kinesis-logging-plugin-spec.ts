@@ -87,10 +87,10 @@ describe('KinesisLoggingPlugin', () => {
     });
 
     /**
-     * NOTE: this test sends an actual message to the Kinesis logger
+     * WARNING: this test sends an actual message to the Kinesis logger
      * only for use in debugging issues locally
      */
-    fit('can send ExternalTestResult', async () => {
+    xit('can send ExternalTestResult', async () => {
         let plugin: KinesisLoggingPlugin = new KinesisLoggingPlugin();
         spyOn(plugin, 'enabled').and.returnValue(Promise.resolve(true));
         spyOn(plugin, 'level').and.returnValue(Promise.resolve(TestLogLevel.info));

@@ -1,5 +1,5 @@
 import { TestConfig } from "aft-core";
-import { AuthenticationType } from "./authentication-type";
+import { AuthenticationType } from "../aws-credentials/authentication-type";
 
 export module KinesisLoggingConfig {
     export var ENABLED_KEY = 'kinesisfirehose_enabled';

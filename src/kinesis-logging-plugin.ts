@@ -1,11 +1,11 @@
 import { ILoggingPlugin, TestLogLevel, TestResult, TestLog, TestLogOptions, EllipsisLocation, MachineInfo, BuildInfo } from "aft-core";
 import { Firehose } from "aws-sdk";
-import { Authentication } from "./authentication";
+import { Authentication } from "./aws-credentials/authentication";
 import { PutRecordInput } from "aws-sdk/clients/firehose";
 import 'aft-core/dist/src/extensions/string-extensions';
 import { KinesisMetaData } from "./kinesis-metadata";
 import pkg = require('../package.json');
-import { KinesisLoggingConfig } from "./kinesis-logging-config";
+import { KinesisLoggingConfig } from "./configuration/kinesis-logging-config";
 
 @ILoggingPlugin.register
 export class KinesisLoggingPlugin implements ILoggingPlugin {
