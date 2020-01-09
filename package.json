@@ -2,7 +2,7 @@
   "name": "aft-logging-awskinesis",
   "version": "1.0.0",
   "description": "Automation Framework for Testing (AFT) logging plugin package supporting test reporting to AWS Kinesis Firehose",
-  "main": "./dist/src/index/js",
+  "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "scripts": {
     "pretest": "tsc --declaration",
