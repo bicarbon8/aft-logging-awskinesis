@@ -7,7 +7,6 @@ import { KinesisMetaData } from "./kinesis-metadata";
 import pkg = require('../package.json');
 import { KinesisLoggingConfig } from "./configuration/kinesis-logging-config";
 
-@ILoggingPlugin.register
 export class KinesisLoggingPlugin implements ILoggingPlugin {
     name: string = 'kinesis';
     
