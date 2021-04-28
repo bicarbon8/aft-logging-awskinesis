@@ -1,122 +1,169 @@
-import { ILoggingPlugin, TestLogLevel, TestResult, TestLog, TestLogOptions, EllipsisLocation, MachineInfo, BuildInfo } from "aft-core";
+import { AbstractLoggingPlugin, LoggingLevel, ITestResult, MachineInfo, BuildInfoPluginManager, ILoggingPluginOptions } from "../../aft-core/src";
 import { Firehose } from "aws-sdk";
-import { Authentication } from "./aws-credentials/authentication";
-import { PutRecordInput } from "aws-sdk/clients/firehose";
-import 'aft-core/dist/src/extensions/string-extensions';
-import { KinesisMetaData } from "./kinesis-metadata";
 import pkg = require('../package.json');
-import { KinesisLoggingConfig } from "./configuration/kinesis-logging-config";
+import { nameof } from "ts-simple-nameof";
+import AWS = require("aws-sdk");
+import { kinesisConf, KinesisConfig } from "./configuration/kinesis-config";
+import { KinesisLogRecord } from "./kinesis-log-record";
 
-export class KinesisLoggingPlugin implements ILoggingPlugin {
-    name: string = 'kinesis';
+export interface IKinesisLoggingPluginOptions extends ILoggingPluginOptions {
+    /**
+     * indicates if log records should be sent in batches (defaults to true)
+     */
+    batch?: boolean;
+    /**
+     * the maximum size of records to batch before sending (defaults to 10)
+     */
+    batchSize?: number;
     
-    private logs: string[] = [];
-    private maxLogLines: number = 10;
-    private lastMessage: string;
+    /**
+     * provided for testing purposes. not for normal use
+     */
+    _client?: AWS.Firehose;
+    /**
+     * provided for testing purposes. not for normal use
+     */
+    _config?: KinesisConfig;
+    /**
+     * provided for testing purposes. not for normal use
+     */
+    _buildInfoMgr?: BuildInfoPluginManager;
+}
 
-    constructor() {
-        this.consoleLog("creating logging plugin instance.");
+/**
+ * NOTE: this plugin references configuration from the `aftconfig.json` file
+ * under a name of `kinesisloggingplugin`. Ex:
+ * ```json
+ * {
+ *   "kinesisloggingplugin": {
+ *     "level": "info",
+ *     "batch": true,
+ *     "batchSize": 10
+ *   }
+ * }
+ * ```
+ */
+export class KinesisLoggingPlugin extends AbstractLoggingPlugin {
+    private _logs: Firehose.Record[];
+    private _batch: boolean;
+    private _batchSize: number;
+    private _client: AWS.Firehose;
+    private _config: KinesisConfig;
+    private _buildInfoMgr: BuildInfoPluginManager;
+    
+    constructor(options?: IKinesisLoggingPluginOptions) {
+        super(nameof(KinesisLoggingPlugin).toLowerCase(), options);
+        this._client = options?._client;
+        this._config = options?._config || kinesisConf;
+        this._buildInfoMgr = options?._buildInfoMgr || BuildInfoPluginManager.instance();
+        this._logs = [];
     }
-    
-    private client: AWS.Firehose;
-    private async getClient(): Promise<AWS.Firehose> {
-        if (!this.client) {
-            this.client = new Firehose({
-                region: await KinesisLoggingConfig.getRegion(),
-                credentials: await Authentication.get()
+
+    async onLoad(): Promise<void> {
+        if (await this.enabled()) {
+            // preload client
+            await this.client();
+        }
+    }
+
+    async client(): Promise<AWS.Firehose> {
+        if (!this._client) {
+            this._client = new Firehose({
+                region: await this._config.region(),
+                credentials: await this._config.credentials()
             });
         }
-        return this.client;
+        return this._client;
     }
 
-    async level(): Promise<TestLogLevel> {
-        let lvl: TestLogLevel = await TestLogOptions.level();
-        return lvl;
+    async batch(): Promise<boolean> {
+        if (this._batch === undefined) {
+            this._batch = await this.optionsMgr.getOption(nameof<IKinesisLoggingPluginOptions>(o => o.batch), true);
+        }
+        return this._batch;
     }
 
-    getLogs(): string[] {
-        return this.logs;
+    async batchSize(): Promise<number> {
+        if (this._batchSize === undefined) {
+            this._batchSize = await this.optionsMgr.getOption(nameof<IKinesisLoggingPluginOptions>(o => o.batchSize), 10);
+        }
+        return this._batchSize;
     }
 
-    getLastMessage(): string {
-        return this.lastMessage;
-    }
-    
-    async enabled(): Promise<boolean> {
-        return await KinesisLoggingConfig.enabled();
-    }
-
-    async log(level: TestLogLevel, message: string): Promise<void> {
-        let enabled: boolean = await this.enabled();
-        if (enabled) {
-            let l: TestLogLevel = await this.level();
-            if (level.value >= l.value && level != TestLogLevel.trace) {
-                this.lastMessage = message.ellide(500, EllipsisLocation.end);
-                this.logs.push(message.ellide(99, EllipsisLocation.end) + '\n');
-                if (this.logs.length > this.maxLogLines) {
-                    // trim off the oldest entry
-                    this.logs.shift();
-                }
+    async log(level: LoggingLevel, message: string): Promise<void> {
+        if (await this.enabled()) {
+            let l: LoggingLevel = await this.level();
+            if (level.value >= l.value && level != LoggingLevel.none) {
+                let record: Firehose.Record = this._createKinesisLogRecord({
+                    logName: await this.logName(),
+                    level: level.name,
+                    message: message,
+                    version: pkg.version,
+                    buildName: await this._buildInfoMgr.getBuildName(),
+                    machineInfo: await MachineInfo.get()
+                });
+                this._logs.push(record);
+                await this._checkAndSendLogs();
             }
         }
     }
 
-    async logResult(result: TestResult): Promise<void> {
-        let enabled: boolean = await this.enabled();
-        if (enabled) {
-            result = await this.updateResultMetaData(result);
-            let data: string = JSON.stringify(result);
-            var recordParams: PutRecordInput = {
-                Record: {
-                    Data: data
-                },
-                DeliveryStreamName: await KinesisLoggingConfig.getDeliveryStreamName()
-            };
-            this.consoleLog("sending TestResult: '" + result.TestId + "' to Kinesis Firehose endpoint using ResultId: '" + result.ResultId + "'...");
-            await this.putRecordAsync(await this.getClient(), recordParams);
-            this.consoleLog("TestResult: '" + result.TestId + "' sent to Kinesis Firehose endpoint.");
+    async logResult(result: ITestResult): Promise<void> {
+        if (await this.enabled()) {
+            let record: Firehose.Record = this._createKinesisLogRecord({
+                logName: await this.logName(),
+                result: result,
+                version: pkg.version,
+                buildName: await this._buildInfoMgr.getBuildName(),
+                machineInfo: await MachineInfo.get()
+            });
+            this._logs.push(record);
+            await this._checkAndSendLogs();
         }
     }
 
-    private async updateResultMetaData(result: TestResult): Promise<TestResult> {
-        if (result) {
-            let logLines: string = '';
-            let logs: string[] = this.getLogs();
-            for (var i=(logs.length-1); i>=0; i--) {
-                logLines += logs[i];
+    async dispose(error?: Error): Promise<void> {
+        if (await this.enabled()) {
+            // ensure all remaining logs are sent
+            this._batch = true;
+            this._batchSize = 1;
+            await this._checkAndSendLogs();
+        }
+    }
+
+    private _createKinesisLogRecord(logRecord: KinesisLogRecord): Firehose.Record {
+        let data: string = JSON.stringify(logRecord);
+        let record: Firehose.Record = {
+            Data: data
+        };
+        return record;
+    }
+
+    private async _checkAndSendLogs(): Promise<Firehose.PutRecordBatchOutput | Firehose.PutRecordOutput> {
+        let batch: boolean = await this.batch();
+        let batchSize: number = await this.batchSize();
+        if (!batch || this._logs.length >= batchSize) {
+            let data: Firehose.PutRecordBatchOutput | Firehose.PutRecordOutput;
+            let deliveryStream: string = await this._config.deliveryStream();
+            if (await this.batch()) {
+                data = await this._sendBatch(deliveryStream, this._logs);
+            } else {
+                data = await this._send(deliveryStream, this._logs[0]);
             }
-            result.MetaData[KinesisMetaData[KinesisMetaData.Logs]] = logLines;
-            result.MetaData[KinesisMetaData[KinesisMetaData.LastMessage]] = this.getLastMessage();
-            result.MetaData[KinesisMetaData[KinesisMetaData.Version]] = pkg.version;
-            result.MetaData[KinesisMetaData[KinesisMetaData.JobName]] = await BuildInfo.name();
-            result.MetaData[KinesisMetaData[KinesisMetaData.BuildNumber]] = await BuildInfo.number();
-            let mi = {
-                name: await MachineInfo.name(),
-                user: await MachineInfo.user(),
-                ip: await MachineInfo.ip()
-            };
-            result.MetaData[KinesisMetaData[KinesisMetaData.TestRunId]] = mi.user + '_' + mi.name + '_' + this.formattedDate();
-            result.MetaData[KinesisMetaData[KinesisMetaData.MachineInfo]] = mi;
+            this._logs = [];
+            return data;
         }
-        return result;
+        return null;
     }
 
-    private formattedDate(): string {
-        let now: Date = new Date();
-        return now.toLocaleDateString('en-IE', { timeZone: 'UTC' });
-    }
-
-    private async consoleLog(message: string): Promise<void> {
-        let level: TestLogLevel = await this.level();
-        if (level.value <= TestLogLevel.trace.value && level != TestLogLevel.none) {
-            console.log(TestLog.format(this.name, TestLogLevel.trace, message));
-        }
-    }
-
-    private async putRecordAsync(client: AWS.Firehose, recordParams: PutRecordInput): Promise<any> {
+    private async _sendBatch(deliveryStream: string, records: Firehose.Record[]): Promise<Firehose.PutRecordBatchOutput> {
         return await new Promise((resolve, reject) => {
             try {
-                client.putRecord(recordParams, (err: AWS.AWSError, data: Firehose.PutRecordOutput) => {
+                let batchInput: Firehose.PutRecordBatchInput = {
+                    Records: records,
+                    DeliveryStreamName: deliveryStream
+                };
+                this._client.putRecordBatch(batchInput, (err: AWS.AWSError, data: Firehose.PutRecordBatchOutput) => {
                     if (err) {
                         reject(err);
                     }
@@ -128,7 +175,22 @@ export class KinesisLoggingPlugin implements ILoggingPlugin {
         });
     }
 
-    async finalise(): Promise<void> {
-        // TODO: track completion of 'putRecord' call using callback Promise.resolve
+    private async _send(deliveryStream: string, record: Firehose.Record): Promise<Firehose.PutRecordOutput> {
+        return await new Promise((resolve, reject) => {
+            try {
+                let input: Firehose.PutRecordInput = {
+                    Record: record,
+                    DeliveryStreamName: deliveryStream
+                }
+                this._client.putRecord(input, (err: AWS.AWSError, data: Firehose.PutRecordOutput) => {
+                    if (err) {
+                        reject(err);
+                    }
+                    resolve(data);
+                });
+            } catch (e) {
+                reject(e);
+            }
+        });
     }
 }
