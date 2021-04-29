@@ -1,9 +1,15 @@
 {
-    "testloglevel": "info",
-    "aws_access_key_id": null,
-    "aws_secret_access_key": null,
-    "kinesisfirehose_regionendpoint": null,
-    "kinesisfirehose_deliverystream": null,
-    "aws_session_token": null,
-    "aws_credential_retrieval": "config"
+    "kinesisconfig": {
+        "accessKeyId": "%AWS_ACCESS_KEY_ID%",
+        "secretAccessKey": "%AWS_SECRET_ACCESS_KEY%",
+        "sessionToken": "%AWS_SESSION_TOKEN%",
+        "region": "us-west-1",
+        "deliveryStream": "aft-reporting",
+        "authenticationType": "config"
+    },
+    "kinesisloggingplugin": {
+        "level": "warn",
+        "batch": true,
+        "batchSize": 4
+    }
 }
