@@ -1,5 +1,5 @@
 import { KinesisLoggingPlugin } from "../src/kinesis-logging-plugin";
-import { MachineInfo, TestStatus, LoggingLevel, rand, ITestResult } from "../../aft-core/src";
+import { MachineInfo, TestStatus, LoggingLevel, rand, ITestResult } from "aft-core";
 import pkg = require('../package.json');
 import Firehose = require("aws-sdk/clients/firehose");
 import { KinesisConfig } from "../src/configuration/kinesis-config";

@@ -1,4 +1,4 @@
-import { ITestResult, MachineInfoData } from "../../aft-core/src";
+import { ITestResult, MachineInfoData } from "aft-core";
 
 export interface KinesisLogRecord {
     logName?: string;

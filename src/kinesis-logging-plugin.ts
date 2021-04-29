@@ -1,4 +1,4 @@
-import { AbstractLoggingPlugin, LoggingLevel, ITestResult, MachineInfo, BuildInfoPluginManager, ILoggingPluginOptions } from "../../aft-core/src";
+import { AbstractLoggingPlugin, LoggingLevel, ITestResult, MachineInfo, BuildInfoPluginManager, ILoggingPluginOptions } from "aft-core";
 import { Firehose } from "aws-sdk";
 import pkg = require('../package.json');
 import { nameof } from "ts-simple-nameof";

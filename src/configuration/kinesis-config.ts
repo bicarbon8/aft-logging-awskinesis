@@ -1,5 +1,5 @@
 import { nameof } from "ts-simple-nameof";
-import { OptionsManager } from "../../../aft-core/src";
+import { OptionsManager } from "aft-core";
 import { AuthenticationType } from "./authentication-type";
 import AWS = require("aws-sdk");
 

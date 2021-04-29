@@ -1,6 +1,6 @@
 {
   "name": "aft-logging-awskinesis",
-  "version": "2.0.0",
+  "version": "4.0.0",
   "description": "Automated Functional Testing (AFT) logging plugin package supporting test reporting to AWS Kinesis Firehose",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -23,14 +23,16 @@
   "author": "Jason Holt Smith <bicarbon8@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "aft-core": "^2.0.0",
+    "aft-core": "^4.0.0",
     "aws-sdk": "2.552.0",
     "es6-promise": "^4.2.8"
   },
   "devDependencies": {
-    "@types/node": "^12.7.12",
     "@types/jasmine": "^3.4.4",
+    "@types/node": "^12.7.12",
     "jasmine": "^3.5.0",
+    "nyc": "^15.1.0",
+    "rimraf": "^3.0.2",
     "typescript": "^3.6.4"
   }
 }
